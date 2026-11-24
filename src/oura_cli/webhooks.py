@@ -8,6 +8,7 @@ from .api import Client, endpoint_name
 from .auth import relay_request
 from .config import read_json
 from .errors import OuraError
+from .http import checked_url
 from .relay import WEBHOOK_TYPES
 from .store import Store, now_iso
 
@@ -44,7 +45,7 @@ def _maintain(profile):
     if profile.config.get("webhook_enabled") is False:
         return {"ok": True, "owner": profile.owner, "enabled": False, "changes": []}
     _creds(profile)
-    callback = profile.config["relay_url"] + "/webhooks"
+    callback = profile.config.get("webhook_callback_url") or profile.config["relay_url"] + "/webhooks"
     existing = _subscriptions(profile)
     wanted = profile.config.get("webhook_types", DEFAULT_TYPES)
     changes = []
@@ -119,7 +120,7 @@ def enable(profile, endpoints=None):
         )
         profile.save_secrets({**secure, "webhook_poll_secret": poll, "webhook_verification_token": verify})
         profile.save_config()
-        relay_request(
+        registered = relay_request(
             profile,
             "POST",
             "/owners",
@@ -130,8 +131,10 @@ def enable(profile, endpoints=None):
                 "verification_token": verify,
             },
         )
+        profile.config["webhook_callback_url"] = checked_url(registered["callback_url"])
+        profile.save_config()
         result = _maintain(profile)
-        result["callback_url"] = profile.config["relay_url"] + "/webhooks"
+        result["callback_url"] = profile.config["webhook_callback_url"]
         return result
 
 
@@ -139,7 +142,7 @@ def status(profile):
     if not profile.config.get("webhook_route"):
         return {"ok": True, "owner": profile.owner, "configured": False, "pending": None}
     remote = _remote(profile, "GET")
-    callback = profile.config["relay_url"] + "/webhooks"
+    callback = profile.config.get("webhook_callback_url") or profile.config["relay_url"] + "/webhooks"
     return {
         "ok": True,
         "owner": profile.owner,

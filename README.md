@@ -107,6 +107,8 @@ Record responses use `schema_version: 1`. `--quiet` suppresses successful output
 
 ## HTTPS relay and webhooks
 
+Oura requires webhook callbacks on HTTPS port 443. The relay's `public_url` is used for callbacks and OAuth redirects; the CLI's `relay_url` may use a separate reachable control address. Owner enrollment returns the public webhook callback, which the CLI persists for subscription creation, status and renewal.
+
 Keep the relay configuration outside Git, mode 0600:
 
 ```json

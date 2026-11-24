@@ -226,6 +226,24 @@ def test_webhook_enable_is_idempotent_and_renew_uses_documented_route(cli, relay
     assert provider["subscriptions"][0]["expiration_time"].startswith("2099")
 
 
+def test_webhooks_use_public_callback_when_cli_connects_through_another_address(cli, relay, provider):
+    import_owner(cli)
+    configure(cli, relay_url=relay["url"], relay_key="relay-reg-test")
+    config = json.loads(relay["config"].read_text())
+    config["public_url"] = "https://relay.example.invalid"
+    relay["config"].write_text(json.dumps(config))
+    relay["restart"]()
+    code, result = cli("webhooks", "enable", "--endpoint", "sleep")
+    assert code == 0, result
+    assert result["callback_url"] == "https://relay.example.invalid/webhooks"
+    assert {s["callback_url"] for s in provider["subscriptions"]} == {
+        "https://relay.example.invalid/webhooks"
+    }
+    assert len(cli("webhooks", "status")[1]["subscriptions"]) == 3
+    assert cli("webhooks", "maintain")[0] == 0
+    assert len(provider["subscriptions"]) == 3
+
+
 def test_webhook_pull_upserts_deletes_and_recovers_without_losing_event(cli, relay, provider):
     path = import_owner(cli)
     configure(cli, relay_url=relay["url"], relay_key="relay-reg-test")
