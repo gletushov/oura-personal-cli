@@ -92,6 +92,8 @@ oura export daily_sleep --format csv --output /private/path/sleep.csv
 
 The first sync fetches approximately a month. Later runs overlap the last two days and fetch changes since the last successful window. Use explicit `--start/--end` for backfills. Heart-rate and battery time series are chunked into ranges of at most 30 days. Date parameters use the profile timezone; datetime ranges include the requested local end day.
 
+For installations with limited user consent, an operator can set a nonempty `sync_endpoints` list in the private owner's `profile.json`. Default `sync` uses that selection; explicit `--endpoint` arguments override it for access checks. Expand the selection only after the owner grants the additional permissions and the corresponding requests succeed. A known missing-scope response is reported as `permission_missing` without rotating an otherwise valid refresh token.
+
 Records are updated by provider ID, or timestamp for time series. A failed page never commits a partial collection. Missing dated records are reconciled within an authoritative fetched window; history outside that window is retained. One endpoint failure preserves successful endpoints and produces a nonzero exit status.
 
 Sleep durations are seconds, HRV milliseconds and heart rate bpm. Null remains unknown. Download time (`fetched_at`) is separate from measurement date (`latest_day`); a recent request does not make old data current. Sleep/readiness availability depends on synchronization from Oura's mobile app.

@@ -142,7 +142,7 @@ class Client:
             )
         token = self.token()
         status, obj = fetch(method, url, {"Authorization": "Bearer " + token}, payload)
-        if status == 401:
+        if status == 401 and not obj.get("missing_scope"):
             token = self.token(rejected=token)
             status, obj = fetch(method, url, {"Authorization": "Bearer " + token}, payload)
         return expect(status, obj)

@@ -54,6 +54,8 @@ def provider():
                     200, {"id": state["identities"][token], "email": "synthetic@example.invalid"}
                 )
             endpoint = path.path.removeprefix("/v2/usercollection/")
+            if endpoint in state.get("scope_denied", set()):
+                return self.reply(401, {"detail": f"Token is not authorized access {endpoint} scope."})
             if endpoint == "ring_battery_level" and q.get("start_datetime") and q.get("end_datetime"):
                 from datetime import datetime
 
@@ -80,6 +82,8 @@ def provider():
             state["requests"].append(("POST", path, {}, ""))
             if path == "/oauth/token":
                 q = parse_qs(raw.decode())
+                if state.get("token_error"):
+                    return self.reply(400, state["token_error"])
                 if q.get("grant_type") == ["refresh_token"]:
                     if q.get("refresh_token") != ["refresh-old"]:
                         return self.reply(400, {"error": "invalid_grant"})

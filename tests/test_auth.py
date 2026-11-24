@@ -59,3 +59,17 @@ def test_no_account_id_from_provider_never_binds_a_profile(cli, provider):
     code, result = cli("auth", "import-legacy", "--env-file", str(f))
     assert code != 0 and result["error"]["code"] == "invalid_identity"
     assert not (cli.home / "owners/alice/secrets.json").exists()
+
+
+def test_scope_denial_does_not_rotate_a_valid_refresh_token(cli, provider):
+    path = import_owner(cli)
+    configure(cli)
+    p = path / "secrets.json"
+    j = json.loads(p.read_text())
+    j.update(token_kind="oauth", refresh_token="refresh-old", expires_at=time.time() + 3600)
+    p.write_text(json.dumps(j))
+    provider["scope_denied"] = {"heartrate"}
+    code, value = cli("sync", "--endpoint", "heartrate")
+    assert code != 0 and value["failed"]["heartrate"]["code"] == "permission_missing"
+    assert provider["refreshes"] == 0
+    assert json.loads(p.read_text())["refresh_token"] == "refresh-old"

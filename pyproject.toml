@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "oura-personal-cli"
-version = "0.1.0"
+version = "0.1.1"
 description = "Portable owner-scoped Oura CLI with OAuth, SQLite sync and signed webhooks"
 readme = "README.md"
 requires-python = ">=3.11"

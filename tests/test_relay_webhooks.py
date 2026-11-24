@@ -364,3 +364,39 @@ def test_disabling_one_owner_preserves_shared_subscriptions_and_other_owner(cli,
     assert event(relay, "", uid="user-alice")[0] == 200
     assert cli("webhooks", "status", owner="alice")[1]["pending"] == 1
     assert alice_route != bob_route
+
+
+def test_oauth_rejection_exposes_safe_reason_without_echoing_codes_or_provider_description(
+    cli, relay, provider
+):
+    create_owner(cli)
+    configure(cli, relay_url=relay["url"], relay_key="relay-reg-test")
+    start = cli("auth", "start")[1]
+    q = parse.parse_qs(parse.urlsplit(start["authorize_url"]).query)
+    assert (
+        http(q["redirect_uri"][0] + "?" + parse.urlencode({"state": q["state"][0], "code": "code-alice"}))[0]
+        == 200
+    )
+    provider["token_error"] = {
+        "error": "invalid_grant",
+        "error_description": "SECRET code-alice client-secret-test",
+        "code": "code-alice",
+    }
+    code, result = cli("auth", "finish")
+    assert code != 0 and result["error"]["code"] == "oauth_invalid_grant"
+    assert "auth cancel" in result["error"]["message"]
+    output = json.dumps(result)
+    assert all(x not in output for x in ["SECRET", "code-alice", "client-secret-test"])
+    assert cli("status")[1]["auth"]["configured"] is False
+
+
+def test_unknown_oauth_error_text_cannot_become_cli_output(cli, relay, provider):
+    create_owner(cli)
+    configure(cli, relay_url=relay["url"], relay_key="relay-reg-test")
+    start = cli("auth", "start")[1]
+    q = parse.parse_qs(parse.urlsplit(start["authorize_url"]).query)
+    http(q["redirect_uri"][0] + "?" + parse.urlencode({"state": q["state"][0], "code": "code-alice"}))
+    provider["token_error"] = {"error": "SECRET_UNEXPECTED_ERROR", "error_description": "SECRET"}
+    code, result = cli("auth", "finish")
+    assert code != 0 and result["error"]["code"] == "invalid_request"
+    assert "SECRET" not in json.dumps(result)

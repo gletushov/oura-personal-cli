@@ -31,7 +31,14 @@ def params_for(endpoint, start, end, tz):
 
 
 def sync(profile, endpoints=None, start=None, end=None, initial_days=30):
-    names = list(dict.fromkeys(endpoint_name(x) for x in (endpoints or ENDPOINTS)))
+    selected = endpoints if endpoints is not None else profile.config.get("sync_endpoints", ENDPOINTS)
+    if (
+        not isinstance(selected, (list, tuple))
+        or not selected
+        or any(not isinstance(x, str) for x in selected)
+    ):
+        raise OuraError("invalid_config", "sync_endpoints must be a nonempty list of collection names")
+    names = list(dict.fromkeys(endpoint_name(x) for x in selected))
     first, last = date_range(start, end)
     last = last or datetime.now(profile.timezone).date()
     if initial_days < 1 or initial_days > 3660:

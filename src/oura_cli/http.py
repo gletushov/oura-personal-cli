@@ -2,10 +2,34 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from urllib import error, parse, request
 
 from .errors import OuraError
+
+OAUTH_ERRORS = {
+    "invalid_grant",
+    "invalid_client",
+    "invalid_request",
+    "invalid_scope",
+    "unauthorized_client",
+    "unsupported_grant_type",
+    "access_denied",
+}
+OAUTH_SCOPES = {
+    "daily",
+    "personal",
+    "email",
+    "heartrate",
+    "workout",
+    "tag",
+    "session",
+    "spo2",
+    "heart_health",
+    "ring_configuration",
+    "stress",
+}
 
 
 class NoRedirect(request.HTTPRedirectHandler):
@@ -47,6 +71,26 @@ def fetch(method, url, headers=None, payload=None, *, form=False, retry_get=True
         except error.HTTPError as exc:
             status = exc.code
             retry_after = exc.headers.get("Retry-After", "")
+            safe_error = {}
+            if parse.urlsplit(url).path == "/oauth/token":
+                try:
+                    body = exc.read(8193)
+                    value = json.loads(body) if len(body) <= 8192 else {}
+                    reason = value.get("error") if isinstance(value, dict) else None
+                    if isinstance(reason, str) and reason in OAUTH_ERRORS:
+                        safe_error = {"oauth_error": reason}
+                except (OSError, ValueError, UnicodeError):
+                    pass
+            elif status == 401 and parse.urlsplit(url).path.startswith("/v2/usercollection/"):
+                try:
+                    body = exc.read(8193)
+                    value = json.loads(body) if len(body) <= 8192 else {}
+                    detail = value.get("detail") if isinstance(value, dict) else None
+                    match = re.fullmatch(r"Token is not authorized access ([a-z_]+) scope\.", detail or "")
+                    if match and match[1] in OAUTH_SCOPES:
+                        safe_error = {"missing_scope": match[1]}
+                except (OSError, ValueError, UnicodeError, TypeError):
+                    pass
             exc.close()
             if status in {429, 500, 502, 503, 504} and attempt + 1 < attempts:
                 try:
@@ -55,7 +99,7 @@ def fetch(method, url, headers=None, payload=None, *, form=False, retry_get=True
                     wait = 2**attempt
                 time.sleep(min(wait, float(os.environ.get("OURA_RETRY_WAIT_MAX", "60"))))
                 continue
-            return status, {}
+            return status, safe_error
         except (error.URLError, TimeoutError, ConnectionError, OSError):
             if attempt + 1 < attempts:
                 time.sleep(min(2**attempt, float(os.environ.get("OURA_RETRY_WAIT_MAX", "60"))))
@@ -69,6 +113,22 @@ def fetch(method, url, headers=None, payload=None, *, form=False, retry_get=True
 def expect(status, value):
     if 200 <= status < 300:
         return value
+    scope = value.get("missing_scope") if isinstance(value, dict) else None
+    if isinstance(scope, str) and scope in OAUTH_SCOPES:
+        raise OuraError(
+            "permission_missing",
+            f"Oura permission {scope} was not granted; authorize it or select other sync endpoints",
+            3,
+        )
+    reason = value.get("oauth_error") if isinstance(value, dict) else None
+    if isinstance(reason, str) and reason in OAUTH_ERRORS:
+        hint = (
+            "The code or grant was rejected; it may be expired, already used or inconsistent. "
+            "Run auth cancel, then auth start and authorize again."
+            if reason == "invalid_grant"
+            else "Check the OAuth application configuration before starting a new authorization."
+        )
+        raise OuraError("oauth_" + reason, f"HTTP {status}: {reason}. {hint}", 3)
     code = {
         400: "invalid_request",
         401: "login_required",

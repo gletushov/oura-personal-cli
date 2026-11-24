@@ -175,3 +175,29 @@ def test_battery_backfill_obeys_live_oura_30_day_timerange_limit(cli, provider):
     queries = [r[2] for r in provider["requests"] if r[1].endswith("/ring_battery_level")]
     assert len(queries) == 2
     assert queries[0]["end_datetime"] == queries[1]["start_datetime"]
+
+
+def test_profile_sync_selection_limits_default_but_explicit_endpoint_can_probe_access(cli, provider):
+    from .conftest import import_owner
+
+    path = import_owner(cli)
+    p = path / "profile.json"
+    j = json.loads(p.read_text())
+    j["sync_endpoints"] = ["sleep", "daily_readiness"]
+    p.write_text(json.dumps(j))
+    code, value = cli("sync")
+    assert code == 0 and set(value["synced"]) == {"sleep", "daily_readiness"}
+    code, value = cli("sync", "--endpoint", "heartrate")
+    assert code == 0 and set(value["synced"]) == {"heartrate"}
+
+
+def test_empty_profile_sync_selection_does_not_expand_back_to_every_collection(cli):
+    from .conftest import import_owner
+
+    path = import_owner(cli)
+    p = path / "profile.json"
+    j = json.loads(p.read_text())
+    j["sync_endpoints"] = []
+    p.write_text(json.dumps(j))
+    code, value = cli("sync")
+    assert code != 0 and value["error"]["code"] == "invalid_config"
